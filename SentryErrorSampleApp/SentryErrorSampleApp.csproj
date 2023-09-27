@@ -1,0 +1,128 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net7.0-android;net7.0-ios;net7.0-maccatalyst</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net7.0-windows10.0.19041.0</TargetFrameworks>
+		<!-- Uncomment to also build the tizen app. You will need to install tizen by following this: https://github.com/Samsung/Tizen.NET -->
+		<!-- <TargetFrameworks>$(TargetFrameworks);net7.0-tizen</TargetFrameworks> -->
+		<OutputType>Exe</OutputType>
+		<RootNamespace>SentryErrorSampleApp</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+
+		<!-- Display name -->
+		<ApplicationTitle>SentryErrorSampleApp</ApplicationTitle>
+
+		<!-- App Identifier -->
+		<ApplicationId>com.companyname.sentryerrorsampleapp</ApplicationId>
+		<ApplicationIdGuid>d800bbc6-3429-4b23-80e3-55422d363cce</ApplicationIdGuid>
+
+		<!-- Versions -->
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
+
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">11.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">13.1</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net7.0-ios|AnyCPU'">
+	  <CreatePackage>false</CreatePackage>
+	  <CodesignKey>Apple Development: Lazareena Thaveethu (B6CQVMVGLU)</CodesignKey>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net7.0-ios|AnyCPU'">
+	  <CreatePackage>false</CreatePackage>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net7.0-maccatalyst|AnyCPU'">
+	  <CreatePackage>false</CreatePackage>
+	  <CodesignKey>Mac Developer</CodesignKey>
+	  <PackageSigningKey>3rd Party Mac Developer Installer</PackageSigningKey>
+	</PropertyGroup>
+	<ItemGroup>
+		<!-- App Icon -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+
+		<!-- Splash Screen -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+
+		<!-- Images -->
+		<MauiImage Include="Resources\Images\*" />
+		<MauiImage Update="Resources\Images\dotnet_bot.svg" BaseSize="168,208" />
+
+		<!-- Custom Fonts -->
+		<MauiFont Include="Resources\Fonts\*" />
+
+		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="7.0.0" />
+		<PackageReference Include="Sentry.Maui" Version="3.39.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="Services\" />
+	  <None Remove="Models\" />
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Services\" />
+	  <Folder Include="Models\" />
+	</ItemGroup>
+<!--
+  This is a workaround for MAUI.Sentry not working on debug
+  https://github.com/getsentry/sentry-dotnet/issues/1961#issuecomment-1301565613
+  https://gist.github.com/mattjohnsonpint/37d3ac06a563c41618fc933bf7282d66
+  This target ensures that iOS Frameworks and XCFrameworks are collected from NuGet packages when using Hot Restart.
+  _UnpackHotRestartFrameworkAssemblies doesn't work for NuGet packages, because the frameworks aren't stored as embedded resources, but just files in the package. 
+-->
+<Target Name="_CollectHotRestartFrameworksFromPackages" BeforeTargets="_CollectHotRestartFrameworks" Condition="'$(IsHotRestartBuild)' == 'true'">
+
+  <!-- 
+    Find all resources within NuGet packages.
+    For example, a package with assembly Foo.dll will have an adjacent Foo.resources folder or a Foo.resources.zip file.
+  -->
+  <ItemGroup>
+    <_PackageResourcesDirs Include="@(AssembliesWithFrameworks -&gt; '%(RootDir)%(Directory)%(FileName).resources')" Condition="Exists('%(RootDir)%(Directory)%(FileName).resources')" />
+    
+    <_PackageResourcesZips Include="@(AssembliesWithFrameworks -&gt; '%(RootDir)%(Directory)%(FileName).resources.zip')" Condition="Exists('%(RootDir)%(Directory)%(FileName).resources.zip')" />
+  </ItemGroup>
+
+  <!-- 
+    For zipped resources, we'll need to unpack them somewhere.
+    The DeviceSpecificIntermediateOutputPath can get too long and hit max path, so we'll work from TEMP instead.
+  -->
+  <PropertyGroup>
+    <HotRestartPackageResourcesDir>$(TEMP)\Xamarin\HotRestart\Resources\</HotRestartPackageResourcesDir>
+  </PropertyGroup>
+  <Unzip ZipFilePath="@(_PackageResourcesZips)" ExtractionPath="$(HotRestartPackageResourcesDir)%(NuGetPackageId)\%(NuGetPackageVersion)" Condition="'@(_PackageResourcesZips)' != '' And !Exists('$(HotRestartPackageResourcesDir)%(NuGetPackageId)\%(NuGetPackageVersion)')" />
+
+  <!-- Add the folders where we unzipped each file to _PackageResourcesDirs -->
+  <ItemGroup Condition="'@(_PackageResourcesZips)' != ''">
+    <_PackageResourcesDirs Include="@(_PackageResourcesZips -&gt; '$(HotRestartPackageResourcesDir)%(NuGetPackageId)\%(NuGetPackageVersion)')" />
+  </ItemGroup>
+
+  <!-- If we have any _PackageResourcesDirs (from either originally zipped or unzipped), scan them for frameworks. -->
+  <ItemGroup Condition="'@(_PackageResourcesDirs)' != ''">
+      
+    <!-- Regular frameworks will be found immediately in the root of the resources folder.  -->
+    <_PackageResourcesFrameworkFiles Include="%(_PackageResourcesDirs.Identity)\*.framework\*" />
+
+    <!-- XCFrameworks will have multiple targets.  We need only the framework from the ios-arm64 target.  -->
+    <_PackageResourcesFrameworkFiles Include="%(_PackageResourcesDirs.Identity)\**\*.xcframework\ios-arm64\*.framework\*" />
+    
+    <!-- Condense the file list to the exact list of frameworks we're adding. -->
+    <_HotRestartFrameworksFromPackages Include="@(_PackageResourcesFrameworkFiles -&gt; '%(RootDir)%(Directory)')" KeepDuplicates="false" />
+    
+    <!-- Finally, add them to _HotRestartFrameworks, which is used by the existing _CollectHotRestartFrameworks target. -->
+    <_HotRestartFrameworks Include="@(_HotRestartFrameworksFromPackages -&gt; TrimEnd('\'))" />
+
+  </ItemGroup>
+
+</Target>
+</Project>
+
